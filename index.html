@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Price Predictor — Gold & BTC Challenge | $100 Prize Pool</title>
+<meta name="description" content="Predict Gold and Bitcoin prices. Closest prediction wins a share of the $100 prize pool. Free entry.">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:#0b0e14; color:#e8ecf1; min-height:100vh; }
+  .wrap { max-width:540px; margin:0 auto; padding:16px 14px 48px; }
+  .topbar { display:flex; justify-content:space-between; align-items:center; padding:10px 2px; }
+  .topbar .logo { font-weight:800; font-size:15px; letter-spacing:1px; }
+  .topbar .logo .gold { color:#f5b942; } .topbar .logo .btc { color:#f7931a; }
+  .authbtn { background:#1a2233; border:1px solid #2a3550; color:#fff; border-radius:20px; padding:8px 16px; font-size:13px; font-weight:700; cursor:pointer; }
+  .authbtn:hover { border-color:#f5b942; }
+  #userChip { display:none; align-items:center; gap:8px; font-size:13px; color:#9fb2cc; }
+  #userChip .av { width:30px; height:30px; border-radius:50%; background:linear-gradient(135deg,#f5b942,#f7931a); color:#111; font-weight:800; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  #logoutLink { color:#5a6579; font-size:12px; cursor:pointer; text-decoration:underline; }
+  header { text-align:center; padding:18px 0 6px; }
+  header .round { display:inline-block; font-size:11px; letter-spacing:2px; color:#0b0e14; background:#f5b942; border-radius:20px; padding:4px 12px; font-weight:800; margin-bottom:10px; }
+  header h1 { font-size:27px; letter-spacing:1px; line-height:1.25; }
+  header h1 .gold { color:#f5b942; } header h1 .btc { color:#f7931a; }
+  header p.sub { color:#8a97ad; font-size:14px; margin-top:8px; }
+  .prize { background:linear-gradient(135deg,#f5b942,#f7931a); color:#111; border-radius:16px; padding:16px; text-align:center; margin:16px 0; font-weight:800; position:relative; overflow:hidden; }
+  .prize::after { content:''; position:absolute; top:0; left:-70%; width:50%; height:100%; background:linear-gradient(100deg,transparent,rgba(255,255,255,.45),transparent); animation:shine 3.2s infinite; }
+  @keyframes shine { to { left:130%; } }
+  .prize .big { font-size:38px; display:block; line-height:1.1; }
+  .prize small { font-weight:600; font-size:12px; }
+  .badges { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:10px 0 4px; }
+  .badge { font-size:11.5px; background:#141a26; border:1px solid #232c40; color:#9fb2cc; border-radius:20px; padding:5px 12px; }
+  .card { background:#141a26; border:1px solid #232c40; border-radius:14px; padding:16px; margin:12px 0; }
+  .card h2 { font-size:13px; margin-bottom:10px; color:#9fb2cc; text-transform:uppercase; letter-spacing:1.5px; }
+  .prices { display:flex; gap:10px; }
+  .price { flex:1; background:#0f1420; border-radius:10px; padding:12px; text-align:center; }
+  .price .lbl { font-size:11px; color:#8a97ad; letter-spacing:.5px; }
+  .price .val { font-size:21px; font-weight:800; margin-top:4px; }
+  .live { display:inline-block; width:8px; height:8px; border-radius:50%; background:#2fd47e; margin-right:5px; animation:pulse 1.6s infinite; vertical-align:1px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  #countdown { text-align:center; font-size:14px; color:#f5b942; font-weight:700; }
+  #countdown .t { font-size:24px; letter-spacing:2px; display:block; margin:6px 0; color:#fff; font-variant-numeric:tabular-nums; }
+  label { display:block; font-size:13px; color:#9fb2cc; margin:12px 0 6px; }
+  input[type=text], input[type=email], input[type=password], input[type=number] { width:100%; padding:13px; border-radius:10px; border:1px solid #2a3550; background:#0f1420; color:#fff; font-size:16px; }
+  input:focus { outline:none; border-color:#f5b942; }
+  .btn { width:100%; margin-top:16px; padding:15px; border:none; border-radius:12px; font-size:17px; font-weight:800; cursor:pointer; background:linear-gradient(135deg,#f5b942,#f7931a); color:#111; }
+  .btn:active { transform:scale(.98); }
+  .btn.ghost { background:#0f1420; color:#f5b942; border:1px solid #f5b942; margin-top:10px; }
+  .btn:disabled { opacity:.5; cursor:wait; }
+  .entry { background:#0f1420; border-radius:10px; padding:10px 12px; margin:8px 0; display:flex; justify-content:space-between; align-items:center; font-size:14px; gap:8px; }
+  .entry .nm { font-weight:700; }
+  .entry .me { color:#f5b942; }
+  .entry .pk { font-size:12.5px; color:#9fb2cc; text-align:right; }
+  .entry.first { border:1px solid #f5b942; }
+  .terms { font-size:12.5px; color:#8a97ad; line-height:1.75; }
+  .terms li { margin:6px 0 6px 16px; }
+  .terms b, .faq b { color:#c9d4e6; }
+  .faq q { display:block; background:#0f1420; border-radius:10px; padding:11px 13px; margin:8px 0; font-size:13.5px; }
+  .faq q::before { content:'Q: '; color:#f5b942; font-weight:800; }
+  .faq a2 { display:block; font-size:13px; color:#8a97ad; margin:-4px 0 10px 13px; line-height:1.6; }
+  .how { display:flex; gap:10px; margin:10px 0; }
+  .how .step { flex:1; background:#0f1420; border-radius:10px; padding:12px 8px; text-align:center; font-size:12.5px; color:#9fb2cc; }
+  .how .step .n { display:block; font-size:20px; margin-bottom:6px; }
+  footer { text-align:center; color:#5a6579; font-size:12px; margin-top:26px; line-height:1.8; }
+  .hidden { display:none !important; }
+  #doneMsg { text-align:center; padding:14px 6px; }
+  #doneMsg .big { font-size:44px; }
+  .stat { display:flex; justify-content:space-around; text-align:center; margin-top:6px; }
+  .stat div .v { font-size:20px; font-weight:800; color:#fff; }
+  .stat div .k { font-size:11px; color:#8a97ad; }
+  /* Auth modal */
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; z-index:50; padding:18px; }
+  .modal .box { background:#141a26; border:1px solid #2a3550; border-radius:16px; padding:22px; width:100%; max-width:380px; }
+  .modal h3 { text-align:center; margin-bottom:4px; font-size:19px; }
+  .modal .tabs { display:flex; gap:8px; margin:14px 0; }
+  .modal .tabs button { flex:1; padding:10px; border-radius:10px; border:1px solid #2a3550; background:#0f1420; color:#9fb2cc; font-weight:700; cursor:pointer; }
+  .modal .tabs button.on { background:linear-gradient(135deg,#f5b942,#f7931a); color:#111; border:none; }
+  .modal .fine { font-size:11px; color:#5a6579; text-align:center; margin-top:12px; line-height:1.6; }
+  .modal .err { color:#ff7a7a; font-size:13px; text-align:center; margin-top:10px; min-height:18px; }
+  .modal .close { float:right; color:#5a6579; cursor:pointer; font-size:18px; }
+  .locknote { text-align:center; padding:26px 10px; color:#9fb2cc; font-size:14px; line-height:1.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="logo"><span class="gold">GOLD</span> vs <span class="btc">BTC</span> PREDICTOR</div>
+    <div style="display:flex;align-items:center">
+    <button class="authbtn" id="loginBtn" onclick="openAuth()">Log in</button>
+    <div id="userChip"><div class="av" id="userAv">?</div><span id="userName"></span><span id="logoutLink" onclick="doLogout()">logout</span></div>
+    <button class="authbtn hidden" id="adminBtn" onclick="openAdmin()" style="border-color:#f5b942;color:#f5b942;margin-left:8px">⚙ Admin</button>
+    </div>
+  </div>
+
+  <header>
+    <div class="round">ROUND #1 · NOW OPEN</div>
+    <h1>Predict the price.<br>Closest wins <span class="gold">$100</span>.</h1>
+    <p class="sub">Gold & Bitcoin · Free entry · Winner announced publicly</p>
+  </header>
+
+  <div class="prize">MONTHLY PRIZE POOL<span class="big">$100</span><small>Winner announced publicly on this page</small></div>
+
+  <div id="winnerBanner" class="card hidden" style="border-color:#f5b942;text-align:center">
+    <h2>🏆 Winner Announced</h2>
+    <p id="winnerText" style="font-size:16px;line-height:1.6"></p>
+  </div>
+
+  <div class="badges">
+    <span class="badge">✅ Free entry</span>
+    <span class="badge">✅ No deposit</span>
+    <span class="badge">✅ Public leaderboard</span>
+    <span class="badge">✅ 18+</span>
+  </div>
+
+  <div class="card">
+    <h2><span class="live"></span>Reference Prices</h2>
+    <div class="prices">
+      <div class="price"><div class="lbl">GOLD (XAU/USD)</div><div class="val" id="goldPrice" style="color:#f5b942">$ —</div></div>
+      <div class="price"><div class="lbl">BITCOIN (BTC/USD)</div><div class="val" id="btcPrice" style="color:#f7931a">$ —</div></div>
+    </div>
+    <div class="stat">
+      <div><div class="v" id="entryCount">0</div><div class="k">entries</div></div>
+      <div><div class="v">$100</div><div class="k">prize pool</div></div>
+      <div><div class="v" id="daysLeft">—</div><div class="k">days left</div></div>
+    </div>
+    <p style="font-size:11px;color:#5a6579;margin-top:10px;text-align:center">BTC live via CoinGecko · Gold indicative reference</p>
+  </div>
+
+  <div class="card">
+    <h2>⏳ Target Date</h2>
+    <div id="countdown"><span>Predictions lock in</span><span class="t" id="cd">—</span><span style="font-size:13px;color:#8a97ad">Target: <b id="targetDate" style="color:#c9d4e6"></b></span></div>
+  </div>
+
+  <div class="card" id="formCard">
+    <h2>🎯 Your Prediction</h2>
+    <div id="needLogin" class="locknote">🔐 <b>Log in to lock your prediction.</b><br>Takes 20 seconds — email + password only.<br><button class="btn" style="max-width:260px;margin:14px auto 0" onclick="openAuth()">LOG IN / SIGN UP</button></div>
+    <div id="predForm" class="hidden">
+      <label>Your display name</label>
+      <input type="text" id="pname" maxlength="20" placeholder="e.g. GoldKing88">
+      <label>Gold price on target date (USD per oz)</label>
+      <input type="number" id="pgold" placeholder="e.g. 4500" min="1" step="any">
+      <label>Bitcoin price on target date (USD)</label>
+      <input type="number" id="pbtc" placeholder="e.g. 95000" min="1" step="any">
+      <button class="btn" id="lockBtn" onclick="submitPred()">LOCK MY PREDICTION 🔒</button>
+      <p style="font-size:11.5px;color:#5a6579;margin-top:10px;text-align:center">One entry per account · Free to play</p>
+    </div>
+  </div>
+
+  <div class="card hidden" id="doneCard">
+    <div id="doneMsg"><div class="big">🔒</div><h2 style="text-align:center">Prediction Locked!</h2><p id="doneText" style="font-size:14px;line-height:1.7"></p>
+    <button class="btn ghost" onclick="shareSite()">📣 CHALLENGE A FRIEND</button></div>
+  </div>
+
+  <div class="card">
+    <h2>🏆 Leaderboard</h2>
+    <div id="board"><p style="color:#5a6579;font-size:13px;text-align:center">Loading…</p></div>
+    <p style="font-size:11px;color:#5a6579;margin-top:8px;text-align:center">Winner = closest combined % error on both assets · All entries public</p>
+  </div>
+
+  <div class="card">
+    <h2>⚙️ How It Works</h2>
+    <div class="how">
+      <div class="step"><span class="n">1️⃣</span>Create your free account</div>
+      <div class="step"><span class="n">2️⃣</span>Lock your prediction</div>
+      <div class="step"><span class="n">3️⃣</span>Closest wins the pool</div>
+    </div>
+    <p style="font-size:12.5px;color:#8a97ad;line-height:1.7"><b>Example:</b> gold closes at $4,400 and you predicted $4,510 — your error is 2.5%. Same math for BTC. Lowest combined error wins.</p>
+  </div>
+
+  <div class="card">
+    <h2>❓ FAQ</h2>
+    <div class="faq">
+      <q>Is it really free?</q><a2>Yes. No deposit, no card, no hidden charges. One free prediction per account.</a2>
+      <q>Why do I need an account?</q><a2>So every entry is tied to a real person — one prediction each, no spam, fair leaderboard. Your password is encrypted and never visible to anyone.</a2>
+      <q>How is the winner decided?</q><a2>On the target date we take the closing prices of Gold (XAU/USD) and Bitcoin (BTC/USD). The entry with the smallest combined percentage error across both wins.</a2>
+      <q>When do I get paid if I win?</q><a2>The winner is announced on this page within 7 days of the target date and paid within 7 days after the announcement.</a2>
+      <q>Where does the prize money come from?</q><a2>The $100 pool is funded from this site's advertising revenue. If a round's revenue is below the pool, the pool rolls over to the next round — announced here.</a2>
+      <q>Can I change my prediction?</q><a2>No. Once locked, entries can't be edited — that's what keeps it fair for everyone.</a2>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📜 Official Rules</h2>
+    <ul class="terms">
+      <li>Round #1 target date: <b id="termsDate"></b>. Entries lock 24 hours before.</li>
+      <li>One entry per account. Duplicate, fake or automated accounts are removed.</li>
+      <li>Winner = smallest combined % distance from the actual closing prices of XAU/USD and BTC/USD on the target date (reference: public market data).</li>
+      <li>Prize pool: <b>$100</b> for Round #1. A tie splits the pool equally.</li>
+      <li>Winner announced on this page within 7 days of the target date; paid within 7 days after announcement.</li>
+      <li>Prize funded from site advertising revenue. Shortfall rolls the pool to the next round (announced here).</li>
+      <li>Void where prohibited. 18+ only. Free promotional contest, not gambling — no stake, no wager.</li>
+    </ul>
+  </div>
+
+  <footer>© 2026 Price Predictor · Round #1<br>Play smart 🍀</footer>
+</div>
+
+<!-- Admin modal -->
+<div class="modal hidden" id="adminModal">
+  <div class="box" style="max-width:480px">
+    <span class="close" onclick="closeAdmin()">✕</span>
+    <h3>⚙ Owner Panel</h3>
+    <div class="stat" style="margin:12px 0">
+      <div><div class="v" id="admCount">0</div><div class="k">total entries</div></div>
+      <div><div class="v" id="admToday">0</div><div class="k">today</div></div>
+    </div>
+    <label>Announce winner (name exactly as on leaderboard)</label>
+    <input type="text" id="admWinner" placeholder="e.g. GoldKing88">
+    <button class="btn" onclick="setWinner()">ANNOUNCE WINNER 🏆</button>
+    <button class="btn ghost" onclick="exportCSV()">⬇ EXPORT ENTRIES (CSV)</button>
+    <div id="admList" style="max-height:220px;overflow:auto;margin-top:12px"></div>
+    <p class="fine">Only visible to the owner email set in the site config.</p>
+  </div>
+</div>
+
+<!-- Auth modal -->
+<div class="modal hidden" id="authModal">
+  <div class="box">
+    <span class="close" onclick="closeAuth()">✕</span>
+    <h3>🔐 Account</h3>
+    <div class="tabs">
+      <button id="tabLogin" class="on" onclick="setTab('login')">Log in</button>
+      <button id="tabSignup" onclick="setTab('signup')">Sign up</button>
+    </div>
+    <label>Email</label>
+    <input type="email" id="aemail" placeholder="you@email.com" autocomplete="email">
+    <label>Password</label>
+    <input type="password" id="apass" placeholder="min. 6 characters" autocomplete="current-password">
+    <div class="err" id="aerr"></div>
+    <button class="btn" id="aGo" onclick="doAuth()">LOG IN</button>
+    <p class="fine">Password is encrypted end-to-end.<br>We never see or store it in readable form.</p>
+  </div>
+</div>
+
+<script>
+// ================= CONFIG =================
+// 1) Create a free Firebase project: https://console.firebase.google.com
+// 2) Enable Authentication → Email/Password, create Firestore Database
+// 3) Paste your web config below. Until then the site runs in DEMO mode.
+var firebaseConfig = {
+  apiKey: "PASTE_YOUR_API_KEY",
+  authDomain: "PASTE_YOUR_AUTH_DOMAIN",
+  projectId: "PASTE_YOUR_PROJECT_ID",
+  appId: "PASTE_YOUR_APP_ID"
+};
+var USE_FIREBASE = firebaseConfig.apiKey.indexOf('PASTE_') !== 0;
+// Owner login: apni email yahan likho — is email se login par "Admin" button ayega
+var ADMIN_EMAIL = "PASTE_OWNER_EMAIL";
+// ==========================================
+
+var TARGET = new Date('2027-01-16T00:00:00');
+var tstr = TARGET.toDateString();
+document.getElementById('targetDate').textContent = tstr;
+document.getElementById('termsDate').textContent = tstr;
+
+var db = null, auth = null, currentUser = null, myEntry = null;
+if (USE_FIREBASE && window.firebase) {
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth(); db = firebase.firestore();
+  auth.onAuthStateChanged(function(u){ currentUser = u; onUser(u); loadBoard(); });
+}
+
+// ---- Countdown ----
+function tick(){
+  var d = TARGET - new Date(); if (d < 0) d = 0;
+  var days = Math.floor(d/86400000), h = Math.floor(d%86400000/3600000),
+      m = Math.floor(d%3600000/60000), s = Math.floor(d%60000/1000);
+  document.getElementById('cd').textContent = days+'d : '+h+'h : '+m+'m : '+s+'s';
+  document.getElementById('daysLeft').textContent = days;
+}
+setInterval(tick, 1000); tick();
+
+// ---- Prices ----
+fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd')
+  .then(function(r){ return r.json(); })
+  .then(function(j){ document.getElementById('btcPrice').textContent = '$' + Number(j.bitcoin.usd).toLocaleString(); })
+  .catch(function(){ document.getElementById('btcPrice').textContent = '$ —'; });
+document.getElementById('goldPrice').textContent = '$4,142'; // indicative reference
+
+// ---- Local demo store (used until Firebase is configured) ----
+function lsGet(){ try { return JSON.parse(localStorage.getItem('pp_board') || '[]'); } catch(e){ return []; } }
+function lsSeed(){
+  var b = lsGet();
+  if (!b.length) {
+    b = [{n:'TraderAli',g:4600,btc:98000},{n:'CryptoQueen',g:4300,btc:110000},
+         {n:'GoldHunter',g:4750,btc:92000},{n:'SilentBull',g:4450,btc:105000},{n:'DesiWolf',g:4525,btc:101500}];
+    localStorage.setItem('pp_board', JSON.stringify(b));
+  }
+  return b;
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+// ---- Auth UI ----
+var authTab = 'login';
+function openAuth(){ document.getElementById('authModal').classList.remove('hidden'); document.getElementById('aerr').textContent=''; }
+function closeAuth(){ document.getElementById('authModal').classList.add('hidden'); }
+function setTab(t){
+  authTab = t;
+  document.getElementById('tabLogin').classList.toggle('on', t==='login');
+  document.getElementById('tabSignup').classList.toggle('on', t==='signup');
+  document.getElementById('aGo').textContent = t==='login' ? 'LOG IN' : 'CREATE ACCOUNT';
+  document.getElementById('aerr').textContent = '';
+}
+function onUser(u){
+  var chip = document.getElementById('userChip'), btn = document.getElementById('loginBtn');
+  var isAdmin = !!(u && ADMIN_EMAIL.indexOf('PASTE_') !== 0 && u.email === ADMIN_EMAIL);
+  document.getElementById('adminBtn').classList.toggle('hidden', !isAdmin);
+  if (u) {
+    btn.style.display = 'none'; chip.style.display = 'flex';
+    document.getElementById('userAv').textContent = (u.email||'?').charAt(0).toUpperCase();
+    document.getElementById('userName').textContent = u.email;
+    document.getElementById('needLogin').classList.add('hidden');
+    document.getElementById('predForm').classList.remove('hidden');
+  } else {
+    btn.style.display = ''; chip.style.display = 'none';
+    if (!myEntry) {
+      document.getElementById('needLogin').classList.remove('hidden');
+      document.getElementById('predForm').classList.add('hidden');
+    }
+  }
+}
+function doAuth(){
+  var em = document.getElementById('aemail').value.trim(), pw = document.getElementById('apass').value;
+  var err = document.getElementById('aerr'); err.textContent = '';
+  if (!em || pw.length < 6) { err.textContent = 'Enter a valid email and 6+ character password.'; return; }
+  // Demo mode: simulate a local account
+  if (!USE_FIREBASE) {
+    try {
+      var users = JSON.parse(localStorage.getItem('pp_users') || '{}');
+      if (authTab === 'signup') {
+        if (users[em]) { err.textContent = 'Account exists — please log in.'; return; }
+        users[em] = {e: em}; localStorage.setItem('pp_users', JSON.stringify(users));
+      } else if (!users[em]) { err.textContent = 'No account with this email — please sign up.'; return; }
+      localStorage.setItem('pp_session', em);
+    } catch(e){}
+    currentUser = {email: em, demo:true};
+    onUser(currentUser); closeAuth(); loadBoard(); return;
+  }
+  var go = document.getElementById('aGo'); go.disabled = true;
+  var p = authTab === 'signup'
+    ? auth.createUserWithEmailAndPassword(em, pw)
+    : auth.signInWithEmailAndPassword(em, pw);
+  p.then(function(){ closeAuth(); }).catch(function(e){ err.textContent = e.message; }).finally(function(){ go.disabled = false; });
+}
+function doLogout(){
+  if (USE_FIREBASE && auth) { auth.signOut(); }
+  try { localStorage.removeItem('pp_session'); } catch(e){}
+  currentUser = null; myEntry = null;
+  document.getElementById('formCard').classList.remove('hidden');
+  document.getElementById('doneCard').classList.add('hidden');
+  onUser(null); loadBoard();
+}
+// restore demo session
+(function(){
+  if (!USE_FIREBASE) {
+    try {
+      var em = localStorage.getItem('pp_session');
+      if (em) { currentUser = {email: em, demo:true}; }
+    } catch(e){}
+    if (currentUser) onUser(currentUser);
+  }
+})();
+
+// ---- Board ----
+function renderEntries(list){
+  document.getElementById('entryCount').textContent = list.length;
+  var me = currentUser ? (currentUser.demo ? localStorage.getItem('pp_me') : currentUser.email) : null;
+  if (currentUser && currentUser.demo) { try { me = localStorage.getItem('pp_me'); } catch(e){} }
+  var html = '';
+  list.forEach(function(e, i){
+    var isMe = myEntry && (e.n === myEntry.n);
+    html += '<div class="entry'+(i===0?' first':'')+'"><span class="nm'+(isMe?' me':'')+'">'+(i===0?'👑 ':'')+escapeHtml(e.n)+(isMe?' (you)':'')+'</span><span class="pk">🥇 $'+Number(e.g).toLocaleString()+'<br>₿ $'+Number(e.btc).toLocaleString()+'</span></div>';
+  });
+  document.getElementById('board').innerHTML = html || '<p style="color:#5a6579;font-size:13px;text-align:center">No entries yet — be the first!</p>';
+  if (myEntry) {
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('doneCard').classList.remove('hidden');
+    document.getElementById('doneText').innerHTML =
+      'You predicted <b style="color:#f5b942">$'+Number(myEntry.g).toLocaleString()+'</b> gold and <b style="color:#f7931a">$'+Number(myEntry.btc).toLocaleString()+'</b> BTC on '+tstr+'. Good luck! 🍀';
+  } else {
+    document.getElementById('formCard').classList.remove('hidden');
+    document.getElementById('doneCard').classList.add('hidden');
+  }
+}
+function loadBoard(){
+  if (USE_FIREBASE && db) {
+    db.collection('predictions').orderBy('createdAt').limit(200).get().then(function(snap){
+      var list = [];
+      snap.forEach(function(d){ var v = d.data(); list.push(v); if (currentUser && v.uid === currentUser.uid) myEntry = v; });
+      renderEntries(list);
+    }).catch(function(){ renderEntries([]); });
+  } else {
+    var b = lsSeed(); myEntry = null;
+    if (currentUser && currentUser.demo) {
+      try {
+        var mn = localStorage.getItem('pp_me');
+        for (var i=0;i<b.length;i++){ if (b[i].n === mn) myEntry = b[i]; }
+      } catch(e){}
+    }
+    renderEntries(b);
+  }
+}
+function submitPred(){
+  if (!currentUser) { openAuth(); return; }
+  var n = document.getElementById('pname').value.trim(),
+      g = parseFloat(document.getElementById('pgold').value),
+      btc = parseFloat(document.getElementById('pbtc').value);
+  if (!n) { alert('Please enter your display name'); return; }
+  if (!(g > 0) || !(btc > 0)) { alert('Please enter both price predictions'); return; }
+  var btn = document.getElementById('lockBtn'); btn.disabled = true;
+  var entry = {n:n, g:g, btc:btc, createdAt: Date.now()};
+  function done(){ loadBoard(); btn.disabled = false; }
+  if (USE_FIREBASE && db) {
+    entry.uid = currentUser.uid; entry.email = currentUser.email;
+    db.collection('predictions').where('uid','==',currentUser.uid).limit(1).get().then(function(s){
+      if (!s.empty) { alert('This account already has an entry'); btn.disabled = false; return; }
+      // name uniqueness check
+      return db.collection('predictions').where('n','==',n).limit(1).get().then(function(s2){
+        if (!s2.empty) { alert('This name is taken'); btn.disabled = false; return; }
+        return db.collection('predictions').add(entry).then(function(){ myEntry = entry; done(); });
+      });
+    }).catch(function(e){ alert(e.message); btn.disabled = false; });
+  } else {
+    var b = lsSeed();
+    for (var i=0;i<b.length;i++){ if (b[i].n.toLowerCase() === n.toLowerCase()) { alert('This name is taken'); btn.disabled = false; return; } }
+    b.push(entry); localStorage.setItem('pp_board', JSON.stringify(b));
+    try { localStorage.setItem('pp_me', n); } catch(e){}
+    myEntry = entry; done();
+  }
+}
+function shareSite(){
+  var txt = 'I just locked my Gold vs BTC price prediction! Closest wins $100. Think you can beat me?';
+  var url = location.href;
+  if (navigator.share) { navigator.share({title:'Price Predictor', text:txt, url:url}); }
+  else { window.open('https://wa.me/?text='+encodeURIComponent(txt+' '+url), '_blank'); }
+}
+
+// ---- Owner admin ----
+function openAdmin(){ document.getElementById('adminModal').classList.remove('hidden'); loadAdmin(); }
+function closeAdmin(){ document.getElementById('adminModal').classList.add('hidden'); }
+var adminEntries = [];
+function loadAdmin(){
+  function show(list){
+    adminEntries = list;
+    document.getElementById('admCount').textContent = list.length;
+    var d0 = new Date(); d0.setHours(0,0,0,0);
+    var t = d0.getTime(), c = 0;
+    list.forEach(function(e){ if (e.createdAt >= t) c++; });
+    document.getElementById('admToday').textContent = c;
+    var h = '';
+    list.forEach(function(e){ h += '<div class="entry"><span class="nm">'+escapeHtml(e.n)+'</span><span class="pk">🥇 $'+Number(e.g).toLocaleString()+'<br>₿ $'+Number(e.btc).toLocaleString()+'</span></div>'; });
+    document.getElementById('admList').innerHTML = h || '<p style="color:#5a6579;font-size:13px">No entries yet.</p>';
+  }
+  if (USE_FIREBASE && db) {
+    db.collection('predictions').orderBy('createdAt').get().then(function(s){ var l=[]; s.forEach(function(d){ l.push(d.data()); }); show(l); });
+  } else { show(lsSeed()); }
+}
+function exportCSV(){
+  var csv = 'name,gold_prediction,btc_prediction,created_at\n';
+  adminEntries.forEach(function(e){ csv += '"'+String(e.n).replace(/"/g,'""')+'",'+e.g+','+e.btc+','+new Date(e.createdAt).toISOString()+'\n'; });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'predictions-round1.csv'; document.body.appendChild(a); a.click(); a.remove();
+}
+function setWinner(){
+  var w = document.getElementById('admWinner').value.trim();
+  if (!w) { alert('Enter the winner name'); return; }
+  function apply(){ showWinner(w); alert('Winner announced: '+w); closeAdmin(); }
+  if (USE_FIREBASE && db) { db.collection('meta').doc('round1').set({winner:w, announcedAt:Date.now()}).then(apply); }
+  else { try { localStorage.setItem('pp_winner', w); } catch(e){} apply(); }
+}
+function showWinner(w){
+  document.getElementById('winnerBanner').classList.remove('hidden');
+  document.getElementById('winnerText').innerHTML = '🎉 <b>'+escapeHtml(w)+'</b> won Round #1 — $100 prize pool!';
+}
+function checkWinner(){
+  if (USE_FIREBASE && db) {
+    db.collection('meta').doc('round1').get().then(function(d){ if (d.exists && d.data().winner) showWinner(d.data().winner); });
+  } else { try { var w = localStorage.getItem('pp_winner'); if (w) showWinner(w); } catch(e){} }
+}
+checkWinner();
+loadBoard();
+</script>
+</body>
+</html>
